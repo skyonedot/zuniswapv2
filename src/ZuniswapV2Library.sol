@@ -24,6 +24,9 @@ library ZuniswapV2Library {
             : (reserve1, reserve0);
     }
 
+
+    // amountIn和reserveIn是一个Token
+    // amountOut和reserveOut是一个Token
     function quote(
         uint256 amountIn,
         uint256 reserveIn,
@@ -43,12 +46,15 @@ library ZuniswapV2Library {
         return tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
     }
 
+
+    // event checkCreateCode(string info, bytes code);
     function pairFor(
         address factoryAddress,
         address tokenA,
         address tokenB
-    ) internal pure returns (address pairAddress) {
+    ) internal returns (address pairAddress) {
         (address token0, address token1) = sortTokens(tokenA, tokenB);
+        // emit checkCreateCode("ZuniswapPair CreattionCode",type(ZuniswapV2Pair).creationCode);
         pairAddress = address(
             uint160(
                 uint256(
@@ -101,16 +107,21 @@ library ZuniswapV2Library {
         return amounts;
     }
 
+    // event checkAmount(string info, uint256 amount);
     function getAmountIn(
         uint256 amountOut,
         uint256 reserveIn,
         uint256 reserveOut
-    ) public pure returns (uint256) {
+    ) pure public returns (uint256) {
         if (amountOut == 0) revert InsufficientAmount();
         if (reserveIn == 0 || reserveOut == 0) revert InsufficientLiquidity();
 
+        // 其实这个地方就是倒推getAmountOut, x_0, y_0, x_1, y_1 来回捣鼓
         uint256 numerator = reserveIn * amountOut * 1000;
         uint256 denominator = (reserveOut - amountOut) * 997;
+        // emit checkAmount("Library Get AmountIn", (numerator / denominator));
+        // emit checkAmount("Library Get AmountIn", numerator );
+        // emit checkAmount("Library Get AmountIn", denominator );
 
         return (numerator / denominator) + 1;
     }

@@ -27,6 +27,8 @@ contract ZuniswapV2LibraryTest is Test {
         encoded = abi.encodeWithSignature(error);
     }
 
+    event checkAddress(string info,address checkAddress);
+    event checkAmount(string info, uint256 amount);
     function setUp() public {
         factory = new ZuniswapV2Factory();
 
@@ -34,6 +36,7 @@ contract ZuniswapV2LibraryTest is Test {
         tokenB = new ERC20Mintable("TokenB", "TKNB");
         tokenC = new ERC20Mintable("TokenC", "TKNC");
         tokenD = new ERC20Mintable("TokenD", "TKND");
+
 
         tokenA.mint(10 ether, address(this));
         tokenB.mint(10 ether, address(this));
@@ -54,14 +57,20 @@ contract ZuniswapV2LibraryTest is Test {
     }
 
     function testGetReserves() public {
-        tokenA.transfer(address(pair), 1.1 ether);
-        tokenB.transfer(address(pair), 0.8 ether);
+        // 这里默认的次序不会变吗
+        // 会在里面排序操作, 不过最后会返回外面给的顺序 比如把A换成C 如下 也成立
+        tokenC.transfer(address(pair2), 1.1 ether);
+        tokenB.transfer(address(pair2), 0.8 ether);
+        emit checkAddress("TokenA Address", address(tokenA));
+        emit checkAddress("TokenB Address", address(tokenB));
+        emit checkAddress("TokenC Address", address(tokenC));
+        emit checkAddress("TokenD Address", address(tokenD));
 
-        ZuniswapV2Pair(address(pair)).mint(address(this));
+        ZuniswapV2Pair(address(pair2)).mint(address(this));
 
         (uint256 reserve0, uint256 reserve1) = ZuniswapV2Library.getReserves(
             address(factory),
-            address(tokenA),
+            address(tokenC),
             address(tokenB)
         );
 
@@ -69,6 +78,7 @@ contract ZuniswapV2LibraryTest is Test {
         assertEq(reserve1, 0.8 ether);
     }
 
+    // 这里没有流动性,  不关池子, 只是简单的数学输入输出做计算
     function testQuote() public {
         uint256 amountOut = ZuniswapV2Library.quote(1 ether, 1 ether, 1 ether);
         assertEq(amountOut, 1 ether);
@@ -100,14 +110,18 @@ contract ZuniswapV2LibraryTest is Test {
         assertEq(pairAddress, factory.pairs(address(tokenA), address(tokenB)));
     }
 
+
     function testPairForNonexistentFactory() public {
         address pairAddress = ZuniswapV2Library.pairFor(
             address(0xaabbcc),
             address(tokenB),
             address(tokenA)
         );
-
-        assertEq(pairAddress, 0xeD35720306D07EC7Df3C7c76c47d7f8c19FC430F);
+        emit checkAddress("testPairForNonexistentFactory PairAddress" ,pairAddress);
+        // 0x0379cefb888fc32dda57dbb4e0a4ef98d1452bcb
+        // 这个地址并不是一致的 因为TokenA TokenB的地址不是每次必须一致
+        // assertEq(pairAddress, 0xeD35720306D07EC7Df3C7c76c47d7f8c19FC430F);
+        assertEq(pairAddress, 0x0379CEfB888fC32dda57dbB4E0a4ef98D1452BcB);
     }
 
     function testGetAmountOut() public {
@@ -116,6 +130,8 @@ contract ZuniswapV2LibraryTest is Test {
             1 ether,
             1.5 ether
         );
+        // 1495.4999999999998 应该是这个数, 不过solidity是舍去小数部分, 
+        // 其实并不一定是千三的, 分母是吧amountIn * 997 算进去的
         assertEq(amountOut, 1495);
     }
 
@@ -133,6 +149,7 @@ contract ZuniswapV2LibraryTest is Test {
         vm.expectRevert(encodeError("InsufficientLiquidity()"));
         ZuniswapV2Library.getAmountOut(1000, 1 ether, 0);
     }
+
 
     function testGetAmountsOut() public {
         tokenA.transfer(address(pair), 1 ether);
@@ -158,11 +175,16 @@ contract ZuniswapV2LibraryTest is Test {
             0.1 ether,
             path
         );
-
+        emit checkAmount("Amount0", amounts[0]);
+        emit checkAmount("Amount1", amounts[1]);
+        emit checkAmount("Amount2", amounts[2]);
+        emit checkAmount("Amount3", amounts[3]);
         assertEq(amounts.length, 4);
         assertEq(amounts[0], 0.1 ether);
         assertEq(amounts[1], 0.181322178776029826 ether);
+        // 0.18132217877602982
         assertEq(amounts[2], 0.076550452221167502 ether);
+        // 0.0765504522211675
         assertEq(amounts[3], 0.141817942760565270 ether);
     }
 
@@ -198,6 +220,8 @@ contract ZuniswapV2LibraryTest is Test {
         ZuniswapV2Library.getAmountIn(1000, 1 ether, 0);
     }
 
+
+    // path那里 其实是倒着推的 完全和getAmountsOut相反
     function testGetAmountsIn() public {
         tokenA.transfer(address(pair), 1 ether);
         tokenB.transfer(address(pair), 2 ether);
