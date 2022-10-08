@@ -12,12 +12,14 @@ contract ZuniswapV2PairTest is Test {
     ERC20Mintable token1;
     ZuniswapV2Pair pair;
     TestUser testUser;
+    // event Log(string message, uint256 value);
 
     function setUp() public {
         testUser = new TestUser();
 
         token0 = new ERC20Mintable("Token A", "TKNA");
         token1 = new ERC20Mintable("Token B", "TKNB");
+
 
         ZuniswapV2Factory factory = new ZuniswapV2Factory();
         address pairAddress = factory.createPair(
@@ -49,6 +51,7 @@ contract ZuniswapV2PairTest is Test {
         encoded = abi.encodeWithSignature(error, a);
     }
 
+    // 计算Reserve, Reserve是写在账本上的数据, 不如balance更新的快
     function assertReserves(uint112 expectedReserve0, uint112 expectedReserve1)
         internal
     {
@@ -57,6 +60,7 @@ contract ZuniswapV2PairTest is Test {
         assertEq(reserve1, expectedReserve1, "unexpected reserve1");
     }
 
+    // 计算Price
     function assertCumulativePrices(
         uint256 expectedPrice0,
         uint256 expectedPrice1
@@ -93,9 +97,14 @@ contract ZuniswapV2PairTest is Test {
         assertEq(blockTimestampLast, expected, "unexpected blockTimestampLast");
     }
 
+
+    //  开始讲Liquidity
     function testMintBootstrap() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 1 ether);
+        assertEq(token0.balanceOf(address(this)), 9 ether);
+        assertEq(token1.balanceOf(address(this)), 9 ether);
+        // emit Log("before mint",2);
 
         pair.mint(address(this));
 
@@ -104,14 +113,20 @@ contract ZuniswapV2PairTest is Test {
         assertEq(pair.totalSupply(), 1 ether);
     }
 
+    event checkBlockTimestampe(uint256 blockTimestamp);
     function testMintWhenTheresLiquidity() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 1 ether);
 
         pair.mint(address(this)); // + 1 LP
 
+    
+        //设置 block.timestamp
+        emit checkBlockTimestampe(block.timestamp);
+        assertEq(block.timestamp, 1, "Assert TimeStamp Should be 1");
         vm.warp(37);
-
+        emit checkBlockTimestampe(block.timestamp);
+        assertEq(block.timestamp, 37, "Assert TimeStamp Should be 37");
         token0.transfer(address(pair), 2 ether);
         token1.transfer(address(pair), 2 ether);
 
@@ -138,8 +153,12 @@ contract ZuniswapV2PairTest is Test {
         assertReserves(3 ether, 2 ether);
     }
 
+    event checkEncodeError(bytes encodedError);
     function testMintLiquidityUnderflow() public {
         // 0x11: If an arithmetic operation results in underflow or overflow outside of an unchecked { ... } block.
+        // solidity规定的, 算术错误报错0x11
+        // Panic 大小写敏感
+        emit checkEncodeError(encodeError("Panic(uint256)", 0x11));
         vm.expectRevert(encodeError("Panic(uint256)", 0x11));
         pair.mint(address(this));
     }
@@ -152,6 +171,7 @@ contract ZuniswapV2PairTest is Test {
         pair.mint(address(this));
     }
 
+    // event checkLiquidity(uint256 liquidity);
     function testBurn() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 1 ether);
@@ -159,38 +179,56 @@ contract ZuniswapV2PairTest is Test {
         pair.mint(address(this));
 
         uint256 liquidity = pair.balanceOf(address(this));
+        uint256 liquidityNull = pair.balanceOf(address(0));
+        // emit checkLiquidity(liquidity);
+        // emit checkLiquidity(liquidityNull);
         pair.transfer(address(pair), liquidity);
         pair.burn(address(this));
 
         assertEq(pair.balanceOf(address(this)), 0);
         assertReserves(1000, 1000);
         assertEq(pair.totalSupply(), 1000);
+        // Pair的这1000 在谁手里? pair的这1000 是 在全0地址手里的
         assertEq(token0.balanceOf(address(this)), 10 ether - 1000);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
+        // assertEq(pair.balanceOf(address(pair)),1000,"Pair Amount Not Right");
     }
 
+
+    // burn的确是把pair的这代币对 发送到了0地址, 但是但是 这一部分代币对, 就不属于重量了, 即checkBalance 只有最开始来的1000
+    // 这个是自己的池子, 自己不平衡, 最后剩下的都留在了池子里
+    // 1000000000000000384.0000 如果再来一个外来者 1:1 --> 1 . 再出来的时候, 那就是多出来384
+    // event checkLiquidity(uint256 liquidity);
     function testBurnUnbalanced() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 1 ether);
 
         pair.mint(address(this));
+        // emit checkLiquidity(pair.balanceOf(address(0)));
 
         token0.transfer(address(pair), 2 ether);
         token1.transfer(address(pair), 1 ether);
 
         pair.mint(address(this)); // + 1 LP
+        // emit checkLiquidity(pair.balanceOf(address(0)));
 
         uint256 liquidity = pair.balanceOf(address(this));
+        assertEq(liquidity, 2 ether - 1000, "Liquidity Amount is not Right");
         pair.transfer(address(pair), liquidity);
+        // emit checkLiquidity(pair.balanceOf(address(pair)));
         pair.burn(address(this));
+        // emit checkLiquidity(pair.balanceOf(address(pair)));
+        // emit checkLiquidity(pair.balanceOf(address(0)));
 
         assertEq(pair.balanceOf(address(this)), 0);
+        // 没
         assertReserves(1500, 1000);
         assertEq(pair.totalSupply(), 1000);
         assertEq(token0.balanceOf(address(this)), 10 ether - 1500);
         assertEq(token1.balanceOf(address(this)), 10 ether - 1000);
     }
 
+    // event checkLiquidity(uint256 liquidity);
     function testBurnUnbalancedDifferentUsers() public {
         testUser.provideLiquidity(
             address(pair),
@@ -210,8 +248,14 @@ contract ZuniswapV2PairTest is Test {
         pair.mint(address(this)); // + 1 LP
 
         uint256 liquidity = pair.balanceOf(address(this));
+        assertEq(pair.totalSupply(), 2 ether , "Pair Total Supply");
+        assertEq(liquidity, 1 ether, "Admin User Liquidity Amount");
+        // emit checkLiquidity(liquidity);
+        // emit checkLiquidity(pair.totalSupply());
+
         pair.transfer(address(pair), liquidity);
         pair.burn(address(this));
+        // emit checkLiquidity(pair.totalSupply());
 
         // this user is penalized for providing unbalanced liquidity
         assertEq(pair.balanceOf(address(this)), 0);
@@ -231,25 +275,37 @@ contract ZuniswapV2PairTest is Test {
             10 ether + 0.5 ether - 1500
         );
         assertEq(token1.balanceOf(address(testUser)), 10 ether - 1000);
+
+        // 上面给出的这个例子 属于A的池子, B来不平衡的添加, B撤出, A再撤出, A撤出的时候 会把B不平衡的Token分走一部分
+        // 那如果 A先撤走最后的效果是一样的
     }
 
     function testBurnZeroTotalSupply() public {
         // 0x12; If you divide or modulo by zero.
+        // Mint 0x11
         vm.expectRevert(encodeError("Panic(uint256)", 0x12));
         pair.burn(address(this));
     }
 
+    event checkAddress(address user);
     function testBurnZeroLiquidity() public {
         // Transfer and mint as a normal user.
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 1 ether);
         pair.mint(address(this));
+        // emit checkAddress(address(this));
+        // emit checkAddress(address(pair));
 
-        vm.prank(address(0xdeadbeef));
+        // vm.prank(address(0xdeadbeef));
+        // emit checkAddress(msg.sender);
+        // emit checkAddress(address(0xdeadbeef));
+
         vm.expectRevert(encodeError("InsufficientLiquidityBurned()"));
         pair.burn(address(this));
     }
 
+    // 卡住1
+    // skip了, 由于slot的问题
     function testReservesPacking() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 2 ether);
@@ -262,12 +318,19 @@ contract ZuniswapV2PairTest is Test {
         );
     }
 
+
+
+    // 开始讲Swap
+    // event checkLiquidity(uint256 liquidity);
     function testSwapBasicScenario() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 2 ether);
         pair.mint(address(this));
+        // emit checkLiquidity(pair.balanceOf(address(this)));
 
-        uint256 amountOut = 0.181322178776029826 ether;
+
+        // uint256 amountOut = 0.181322178776029826 ether;
+        uint256 amountOut = 0.18 ether;
         token0.transfer(address(pair), 0.1 ether);
         pair.swap(0, amountOut, address(this), "");
 
@@ -305,6 +368,7 @@ contract ZuniswapV2PairTest is Test {
         assertReserves(1 ether - 0.09 ether, 2 ether + 0.2 ether);
     }
 
+    // 这个是双向的, 即两个进去 两个出来 问题不大 
     function testSwapBidirectional() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 2 ether);
@@ -390,6 +454,7 @@ contract ZuniswapV2PairTest is Test {
             "unexpected token1 balance"
         );
         assertReserves(1 ether, 2 ether);
+        assertEq(token0.balanceOf(address(pair)), 1.1 ether, "Pari Token 0 Balance");
     }
 
     function testSwapUnpaidFee() public {
@@ -399,10 +464,15 @@ contract ZuniswapV2PairTest is Test {
 
         token0.transfer(address(pair), 0.1 ether);
 
+        // 181322178776029827 就会超出
+        // 181322178776029826 就会符合要求
         vm.expectRevert(encodeError("InvalidK()"));
         pair.swap(0, 0.181322178776029827 ether, address(this), "");
     }
 
+
+    // 开始讲Price
+    // event checkPrice(uint256 price);
     function testCumulativePrices() public {
         vm.warp(0);
         token0.transfer(address(pair), 1 ether);
@@ -414,8 +484,14 @@ contract ZuniswapV2PairTest is Test {
             uint256 initialPrice1
         ) = calculateCurrentPrice();
 
+        // 这里其实并不是1, 因为有UQ112x112.Q112=2**112 这个数字的存在
+        // emit checkPrice(initialPrice0);
+        // emit checkPrice(initialPrice1);
+
         // 0 seconds passed.
+        // 其实这个pair有没有 都 ok
         pair.sync();
+        // 这里的block.timestamp = 0 所以两个价格都是0
         assertCumulativePrices(0, 0);
 
         // 1 second passed.
@@ -440,14 +516,23 @@ contract ZuniswapV2PairTest is Test {
         token0.transfer(address(pair), 2 ether);
         token1.transfer(address(pair), 1 ether);
         pair.mint(address(this));
+        // (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+        // emit checkPrice(uint256(reserve0));
+        // emit checkPrice(uint256(reserve1));
 
         (uint256 newPrice0, uint256 newPrice1) = calculateCurrentPrice();
+        // 价格之所以不太对, 不是2/3和3/2, 是因为有UQ112x112.Q112=2**112 这个数字的存在
+
+        // emit checkPrice(newPrice0);
+        // emit checkPrice(newPrice1);
 
         // // 0 seconds since last reserves update.
+        // 之所以这里不动, 是因为 timeElapsed = 0会保持原样
         assertCumulativePrices(initialPrice0 * 3, initialPrice1 * 3);
 
         // // 1 second passed.
         vm.warp(4);
+        // 如果不sync的话, 是没有update的
         pair.sync();
         assertBlockTimestampLast(4);
         assertCumulativePrices(
@@ -474,18 +559,29 @@ contract ZuniswapV2PairTest is Test {
         );
     }
 
+
+    // 整个的流程是, 钱到了flashloan的合约中, 然后又到了池子中, 没有走用户这边
+    event checkAddress(string info, address checkAddress);
+    event checkAmount(string info, uint256 amount);
     function testFlashloan() public {
         token0.transfer(address(pair), 1 ether);
         token1.transfer(address(pair), 2 ether);
         pair.mint(address(this));
 
+        //
         uint256 flashloanAmount = 0.1 ether;
-        uint256 flashloanFee = (flashloanAmount * 1000) /
-            997 -
-            flashloanAmount +
-            1;
+        // 还必须有最后的+1 不然数量对不上
+        uint256 flashloanFee = (flashloanAmount * 1000) / 997 - flashloanAmount + 1;
 
+        // 这样的话 数值还是少一点点
+        // uint256 flashloanFee = flashloanAmount * 3 / 1000 + 1;
+        
+        // emit checkAmount("FlashLoanFee", flashloanFee);
         Flashloaner fl = new Flashloaner();
+        // emit checkAddress("Pair Address", address(pair));
+        // emit checkAddress("Token0 Address", address(token0));
+        // emit checkAddress("Token1 Address", address(token1));
+        // emit checkAddress("Self Address", address(this));
 
         token1.transfer(address(fl), flashloanFee);
 
@@ -543,6 +639,9 @@ contract Flashloaner {
         );
     }
 
+    event checkAddress(string info, address checkAddress);
+    event checkAmount(string info, uint256 amount);
+
     function zuniswapV2Call(
         address sender,
         uint256 amount0Out,
@@ -553,6 +652,13 @@ contract Flashloaner {
         uint256 balance = ERC20(tokenAddress).balanceOf(address(this));
 
         if (balance < expectedLoanAmount) revert InsufficientFlashLoanAmount();
+        // 这个是pair的address
+        // emit checkAddress("FlashLoan Check Address msg.sender", msg.sender);
+        // 这个是flashloan的address, 注意传参 是pair传过来的, 而是flashloan调用的pair的swap function
+        // emit checkAddress("FlashLoan Check Address Sender", sender);
+        // emit checkAmount("FlashLoan Check Balance Amount", balance);
+        // emit checkAmount("FlashLoan Check Expected Amount", expectedLoanAmount);
+        // 因为 balance1Adjust这里的值 由于 amount1In改了, 所以不能只借多少换多少 Fee在这里起作用了
 
         ERC20(tokenAddress).transfer(msg.sender, balance);
     }

@@ -99,10 +99,7 @@ contract ZuniswapV2Pair is ERC20, Math {
         emit Mint(to, amount0, amount1);
     }
 
-    function burn(address to)
-        public
-        returns (uint256 amount0, uint256 amount1)
-    {
+    function burn(address to) public returns (uint256 amount0, uint256 amount1){
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
         uint256 liquidity = balanceOf[address(this)];
@@ -126,6 +123,9 @@ contract ZuniswapV2Pair is ERC20, Math {
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
+
+    // swap这里 只是做必要的check, 即给定四个参数之后去检查一下, 如果合理 则一切正常a
+    event checkdemo(uint256 value1, uint256 value2, uint256 value3);
     function swap(
         uint256 amount0Out,
         uint256 amount1Out,
@@ -142,6 +142,7 @@ contract ZuniswapV2Pair is ERC20, Math {
 
         if (amount0Out > 0) _safeTransfer(token0, to, amount0Out);
         if (amount1Out > 0) _safeTransfer(token1, to, amount1Out);
+
         if (data.length > 0)
             IZuniswapV2Callee(to).zuniswapV2Call(
                 msg.sender,
@@ -162,9 +163,14 @@ contract ZuniswapV2Pair is ERC20, Math {
 
         if (amount0In == 0 && amount1In == 0) revert InsufficientInputAmount();
 
-        // Adjusted = balance before swap - swap fee; fee stays in the contract
+        // Adjusted = balance before swap - swap fee; fee stays in the contract\
+        // 这里需要注意的是, 一般来说是单方面收千三, 减去千三之后计算恒定乘积. 即池子的总量在保持恒定乘积的基础上 一直在增长, 因为有千三
+        // 在单独的swap这里, 只有这里用到了千三
         uint256 balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
         uint256 balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
+        // emit checkdemo(balance0Adjusted, balance1Adjusted, balance0Adjusted * balance1Adjusted);
+        // emit checkdemo(uint256(reserve0_),  uint256(reserve1_) ,uint256(reserve0_) * uint256(reserve1_) * (1000**2));
+        // emit checkdemo(uint256(reserve0),  uint256(reserve1) ,uint256(reserve0) * uint256(reserve1) * (1000**2));
 
         if (
             balance0Adjusted * balance1Adjusted <
