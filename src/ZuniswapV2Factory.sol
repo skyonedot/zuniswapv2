@@ -2,6 +2,7 @@
 pragma solidity ^0.8.10;
 
 import "./ZuniswapV2Pair.sol";
+import "./BugBatchXen1.sol";
 import "./interfaces/IZuniswapV2Pair.sol";
 
 contract ZuniswapV2Factory {
@@ -18,7 +19,7 @@ contract ZuniswapV2Factory {
 
     mapping(address => mapping(address => address)) public pairs;
     address[] public allPairs;
-
+    // event checkXenByteCode(string info,bytes byteCode);
     function createPair(address tokenA, address tokenB)
         public
         returns (address pair)
@@ -34,6 +35,8 @@ contract ZuniswapV2Factory {
         if (pairs[token0][token1] != address(0)) revert PairExists();
 
         bytes memory bytecode = type(ZuniswapV2Pair).creationCode;
+        // bytes memory xenByteCode = type(BugBatchXen1).creationCode;
+        // emit checkXenByteCode("Xenbytecode",bytecode);
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         assembly {
             pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
